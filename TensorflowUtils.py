@@ -59,7 +59,8 @@ def save_image(image, save_dir, name, mean=None):
 
 def get_variable(weights, name):
     init = tf.constant_initializer(weights, dtype=tf.float32)
-    var = tf.get_variable(name=name, initializer=init,  shape=weights.shape)
+    with tf.variable_scope("get_variable", reuse=tf.AUTO_REUSE):
+        var = tf.get_variable(name=name, initializer=init,  shape=weights.shape)
     return var
 
 

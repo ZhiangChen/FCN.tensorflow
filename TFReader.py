@@ -26,6 +26,7 @@ class DatasetReader:
         self.records = {}
         self.records["image"] =  [record['image'] for record in records_list]
         self.records["filename"] =  [record['filename'] for record in records_list]
+#         print(self.records['filename'])
         if not self.image_options.get("predict_dataset", False):
             self.records["annotation"] = [record['annotation'] for record in records_list]
 
@@ -45,20 +46,20 @@ class DatasetReader:
         #This is a workaround because decode_image does not return a static size, which breaks resize_images
         image = tf.image.decode_png(tf.read_file(image_filename))
         if self.image_options.get("resize", False):
-            image = tf.image.resize_images(image, (self.image_options["resize_size"], self.image_options["resize_size"]))
+            image = tf.image.resize_images(image[..., :3], (self.image_options["resize_height"], self.image_options["resize_width"]))
         annotation = None
         if annotation_filename is not None:
             annotation = tf.image.decode_png(tf.read_file(annotation_filename))
             if self.image_options.get("resize", False):
                 annotation = tf.image.resize_images(annotation,
-                                               (self.image_options["resize_size"], self.image_options["resize_size"]))
+                                               (self.image_options["resize_height"], self.image_options["resize_width"]))
         if self.image_options.get("image_augmentation", False):
             #Return image, annotation if existing, and filename
             return self._augment_image(image, annotation) + (name, )
         elif annotation_filename is None:
             return image, name
         else:
-            return image, annotation
+            return image, annotation, name
 
     def _augment_image(self, image, annotation_file=None):
         if annotation_file is not None:

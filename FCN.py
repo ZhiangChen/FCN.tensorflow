@@ -16,7 +16,7 @@ tf.flags.DEFINE_string("data_dir", "Data_zoo/dataset/", "path to dataset")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
 tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
-tf.flags.DEFINE_bool('image_augmentation', "True", "Image augmentation: True/ False")
+tf.flags.DEFINE_bool('image_augmentation', "False", "Image augmentation: True/ False")
 tf.flags.DEFINE_float('dropout', "0.5", "Probably of keeping value in dropout (valid values (0.0,1.0]")
 tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize/ predict") #test not implemented
 
@@ -24,7 +24,9 @@ MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydee
 
 MAX_ITERATION = int(1e5 + 1)
 NUM_OF_CLASSESS = 2
-IMAGE_SIZE = 224
+# IMAGE_SIZE = 224
+IMAGE_WIDTH = 224
+IMAGE_HEIGHT = 224
 
 
 def vgg_net(weights, image):
@@ -144,131 +146,158 @@ def train(loss_val, var_list):
 
 
 def main(argv=None):
-    keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
-    image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
-    annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
+    with tf.device('/device:GPU:1'):
+        keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
+#         image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
+        image = tf.placeholder(tf.float32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name="input_image")
+#         annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
+        annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 1], name="annotation")
 
-    pred_annotation, logits = inference(image, keep_probability)
-    tf.summary.image("input_image", image, max_outputs=FLAGS.batch_size)
-    tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs=FLAGS.batch_size)
-    tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=FLAGS.batch_size)
-    loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
-                                                                          labels=tf.squeeze(annotation, squeeze_dims=[3]),
-                                                                          name="entropy")))
-    loss_summary = tf.summary.scalar("entropy", loss)
+        pred_annotation, logits = inference(image, keep_probability)
+        tf.summary.image("input_image", image, max_outputs=FLAGS.batch_size)
+        tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs=FLAGS.batch_size)
+        tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=FLAGS.batch_size)
+        loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
+                                                                              labels=tf.squeeze(annotation, squeeze_dims=[3]),
+                                                                              name="entropy")))
+        loss_summary = tf.summary.scalar("entropy", loss)
 
-    trainable_var = tf.trainable_variables()
-    if FLAGS.debug:
-        for var in trainable_var:
-            utils.add_to_regularization_and_summary(var)
-    train_op = train(loss, trainable_var)
+        trainable_var = tf.trainable_variables()
+        if FLAGS.debug:
+            for var in trainable_var:
+                utils.add_to_regularization_and_summary(var)
+        train_op = train(loss, trainable_var)
 
-    print("Setting up summary op...")
-    summary_op = tf.summary.merge_all()
+        print("Setting up summary op...")
+        summary_op = tf.summary.merge_all()
 
-    print("Setting up image reader...")
+        print("Setting up image reader...")
+    print('Here')
     train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
     print("No. train records: ", len(train_records))
     print("No. validation records: ", len(valid_records))
 
     print("Setting up dataset reader")
-    image_options_train = {'resize': True, 'resize_size': IMAGE_SIZE, 'image_augmentation':FLAGS.image_augmentation}
-    image_options_val = {'resize': True, 'resize_size': IMAGE_SIZE}
+    image_options_train = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT, 'image_augmentation':FLAGS.image_augmentation}
+    image_options_val = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT}
     if FLAGS.mode == 'train':
         train_val_dataset = dataset.TrainVal.from_records(
             train_records, valid_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size)
     #validation_dataset_reader = dataset.BatchDatset(valid_records, image_options_val)
 
-    sess = tf.Session()
+    with tf.device('/device:GPU:1'):
+        config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)
+        config.gpu_options.allow_growth = True
+        sess = tf.Session(config= config)
 
-    print("Setting up Saver...")
-    saver = tf.train.Saver()
+        print("Setting up Saver...")
+        saver = tf.train.Saver()
 
-    # create two summary writers to show training loss and validation loss in the same graph
-    # need to create two folders 'train' and 'validation' inside FLAGS.logs_dir
-    train_writer = tf.summary.FileWriter(FLAGS.logs_dir + '/train', sess.graph)
-    validation_writer = tf.summary.FileWriter(FLAGS.logs_dir + '/validation')
+        # create two summary writers to show training loss and validation loss in the same graph
+        # need to create two folders 'train' and 'validation' inside FLAGS.logs_dir
+        train_writer = tf.summary.FileWriter(FLAGS.logs_dir + '/train', sess.graph)
+        validation_writer = tf.summary.FileWriter(FLAGS.logs_dir + '/validation')
 
-    sess.run(tf.global_variables_initializer())
-    ckpt = tf.train.get_checkpoint_state(FLAGS.logs_dir)
-    if ckpt and ckpt.model_checkpoint_path:
-        saver.restore(sess, ckpt.model_checkpoint_path)
-        print("Model restored...")
+        sess.run(tf.global_variables_initializer())
+        ckpt = tf.train.get_checkpoint_state(FLAGS.logs_dir)
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+            print("Model restored...")
 
-    if FLAGS.mode == "train":
-        it_train, it_val = train_val_dataset.get_iterators()
-        # get_next = iterator.get_next()
-        #training_init_op, val_init_op = train_val_dataset.get_ops()
-        if FLAGS.dropout <=0 or FLAGS.dropout > 1:
-            raise ValueError("Dropout value not in range (0,1]")
-        #sess.run(training_init_op)
+        if FLAGS.mode == "train":
+            it_train, it_val = train_val_dataset.get_iterators()
+            # get_next = iterator.get_next()
+            #training_init_op, val_init_op = train_val_dataset.get_ops()
+            if FLAGS.dropout <=0 or FLAGS.dropout > 1:
+                raise ValueError("Dropout value not in range (0,1]")
+            #sess.run(training_init_op)
 
-        #Ignore filename from reader
-        next_train_images, next_train_annotations, next_train_name = it_train.get_next()
-        next_val_images, next_val_annotations, next_val_name = it_val.get_next()
-        for i in xrange(MAX_ITERATION):
+            #Ignore filename from reader
+            next_train_images, next_train_annotations, next_train_name = it_train.get_next()
+            next_val_images, next_val_annotations, next_val_name = it_val.get_next()
+            for i in xrange(MAX_ITERATION):
+    #             print(sess.run(next_train_name))
+                train_images, train_annotations = sess.run([next_train_images, next_train_annotations])
+    #             print(train_images)
+    #             print(train_annotations)
+                feed_dict = {image: train_images, annotation: train_annotations, keep_probability: (1 - FLAGS.dropout)}
 
-            train_images, train_annotations = sess.run([next_train_images, next_train_annotations])
-            feed_dict = {image: train_images, annotation: train_annotations, keep_probability: (1 - FLAGS.dropout)}
+                sess.run(train_op, feed_dict=feed_dict)
 
-            sess.run(train_op, feed_dict=feed_dict)
+                if i % 10 == 0:
+                    train_loss, summary_str = sess.run([loss, loss_summary], feed_dict=feed_dict)
+                    print("Step: %d, Train_loss:%g" % (i, train_loss))
+                    train_writer.add_summary(summary_str, i)
 
-            if i % 10 == 0:
-                train_loss, summary_str = sess.run([loss, loss_summary], feed_dict=feed_dict)
-                print("Step: %d, Train_loss:%g" % (i, train_loss))
-                train_writer.add_summary(summary_str, i)
+                if i % 500 == 0:
+                    #sess.run(val_init_op)
 
-            if i % 500 == 0:
-                #sess.run(val_init_op)
+                    valid_images, valid_annotations = sess.run([next_val_images, next_val_annotations])
+                    valid_loss, summary_sva = sess.run([loss, loss_summary], feed_dict={image: valid_images, annotation: valid_annotations,
+                                                           keep_probability: 1.0})
+                    print("%s ---> Validation_loss: %g" % (datetime.datetime.now(), valid_loss))
 
-                valid_images, valid_annotations = sess.run([next_val_images, next_val_annotations])
-                valid_loss, summary_sva = sess.run([loss, loss_summary], feed_dict={image: valid_images, annotation: valid_annotations,
-                                                       keep_probability: 1.0})
-                print("%s ---> Validation_loss: %g" % (datetime.datetime.now(), valid_loss))
-
-                # add validation loss to TensorBoard
-                validation_writer.add_summary(summary_sva, i)
-                saver.save(sess, FLAGS.logs_dir + "model.ckpt", i)
-                #sess.run(training_init_op)
+                    # add validation loss to TensorBoard
+                    validation_writer.add_summary(summary_sva, i)
+                    saver.save(sess, FLAGS.logs_dir + "model.ckpt", i)
+                    #sess.run(training_init_op)
 
 
-    elif FLAGS.mode == "visualize":
-        iterator = train_val_dataset.get_iterator()
-        get_next = iterator.get_next()
-        training_init_op, val_init_op = train_val_dataset.get_ops()
-        sess.run(val_init_op)
-        valid_images, valid_annotations = sess.run(get_next)
-        pred = sess.run(pred_annotation, feed_dict={image: valid_images, annotation: valid_annotations,
-                                                    keep_probability: 1.0})
-        valid_annotations = np.squeeze(valid_annotations, axis=3)
-        pred = np.squeeze(pred, axis=3)
-
-        for itr in range(FLAGS.batch_size):
-            utils.save_image(valid_images[itr].astype(np.uint8), FLAGS.logs_dir, name="inp_" + str(5+itr))
-            utils.save_image(valid_annotations[itr].astype(np.uint8), FLAGS.logs_dir, name="gt_" + str(5+itr))
-            utils.save_image(pred[itr].astype(np.uint8), FLAGS.logs_dir, name="pred_" + str(5+itr))
-            print("Saved image: %d" % itr)
-
-    elif FLAGS.mode == "predict":
-        predict_records = scene_parsing.read_prediction_set(FLAGS.data_dir)
-        no_predict_images = len(predict_records)
-        print ("No. of predict records {}".format(no_predict_images))
-        predict_image_options = {'resize': True, 'resize_size': IMAGE_SIZE, 'predict_dataset': True}
-        test_dataset_reader = dataset.SingleDataset.from_records(predict_records, predict_image_options)
-        next_test_image = test_dataset_reader.get_iterator().get_next()
-        print("Predicting {} images".format(no_predict_images))
-
-        if not os.path.exists(os.path.join(FLAGS.logs_dir, "predictions")):
-            os.makedirs(os.path.join(FLAGS.logs_dir, "predictions"))
-        for i in range(no_predict_images):
-            if (i % 10 == 0):
-                print("Predicted {}/{} images".format(i, no_predict_images))
-            predict_images, predict_names = sess.run(next_test_image)
-            pred = sess.run(pred_annotation, feed_dict={image: predict_images,
+        elif FLAGS.mode == "visualize":
+            iterator = train_val_dataset.get_iterator()
+            get_next = iterator.get_next()
+            training_init_op, val_init_op = train_val_dataset.get_ops()
+            sess.run(val_init_op)
+            valid_images, valid_annotations = sess.run(get_next)
+            pred = sess.run(pred_annotation, feed_dict={image: valid_images, annotation: valid_annotations,
                                                         keep_probability: 1.0})
+            valid_annotations = np.squeeze(valid_annotations, axis=3)
             pred = np.squeeze(pred, axis=3)
-            utils.save_image(pred[0].astype(np.uint8), os.path.join(FLAGS.logs_dir, "predictions"),
-                             name="predict_" + str(predict_names))
+
+            for itr in range(FLAGS.batch_size):
+                utils.save_image(valid_images[itr].astype(np.uint8), FLAGS.logs_dir, name="inp_" + str(5+itr))
+                utils.save_image(valid_annotations[itr].astype(np.uint8), FLAGS.logs_dir, name="gt_" + str(5+itr))
+                utils.save_image(pred[itr].astype(np.uint8), FLAGS.logs_dir, name="pred_" + str(5+itr))
+                print("Saved image: %d" % itr)
+
+        elif FLAGS.mode == "predict":
+            predict_records = scene_parsing.read_prediction_set(FLAGS.data_dir)
+            no_predict_images = len(predict_records)
+            print ("No. of predict records {}".format(no_predict_images))
+            predict_image_options = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT, 'predict_dataset': True}
+            test_dataset_reader = dataset.SingleDataset.from_records(predict_records, predict_image_options)
+            next_test_image = test_dataset_reader.get_iterator().get_next()
+            if not os.path.exists(os.path.join(FLAGS.logs_dir, "predictions")):
+                os.makedirs(os.path.join(FLAGS.logs_dir, "predictions"))
+            for i in range(no_predict_images):
+                if (i % 10 == 0):
+                    print("Predicted {}/{} images".format(i, no_predict_images))
+                predict_images, predict_names = sess.run(next_test_image)
+                pred = sess.run(pred_annotation, feed_dict={image: predict_images,
+                                                            keep_probability: 1.0})
+                pred = np.squeeze(pred, axis=3)
+                utils.save_image((pred[0] * 255).astype(np.uint8), os.path.join(FLAGS.logs_dir, "predictions"),
+                                 name="predict_" + str(predict_names))
+        
+#         predict_records = scene_parsing.read_prediction_set(FLAGS.data_dir)
+#         no_predict_images = len(predict_records)
+#         print ("No. of predict records {}".format(no_predict_images))
+#         predict_image_options = {'resize': True, 'resize_size': IMAGE_SIZE, 'predict_dataset': True}
+#         test_dataset_reader = dataset.SingleDataset.from_records(predict_records, predict_image_options)
+#         next_test_image = test_dataset_reader.get_iterator().get_next()
+#         print("Predicting {} images".format(no_predict_images))
+
+#         if not os.path.exists(os.path.join(FLAGS.logs_dir, "predictions")):
+#             os.makedirs(os.path.join(FLAGS.logs_dir, "predictions"))
+#         for i in range(no_predict_images):
+#             if (i % 10 == 0):
+#                 print("Predicted {}/{} images".format(i, no_predict_images))
+#             predict_images, predict_names = sess.run(next_test_image)
+#             pred = sess.run(pred_annotation, feed_dict={image: predict_images,
+#                                                         keep_probability: 1.0})
+#             pred = np.squeeze(pred, axis=3)
+#             utils.save_image(pred[0].astype(np.uint8), os.path.join(FLAGS.logs_dir, "predictions"),
+#                              name="predict_" + str(predict_names))
 
 
 if __name__ == "__main__":

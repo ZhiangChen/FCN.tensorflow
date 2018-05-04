@@ -17,13 +17,17 @@ def read_prediction_set(data_dir):
         return None
     file_list = []
     image_list = []
-    file_glob = os.path.join(data_dir, '*.' + 'png')
-    file_list.extend(glob.glob(file_glob))
+    for ipath in os.listdir(data_dir):
+        if not os.path.isdir(os.path.join(data_dir, ipath)):
+            continue
+        file_glob = os.path.join(data_dir, ipath, '*.' + 'png')
+        print(file_glob)
+        file_list.extend(glob.glob(file_glob))
 
     if not file_list:
         print('No files found')
     else:
-        image_list = [{'image': f, 'filename': os.path.splitext(f.split("/")[-1])[0]} for f in file_list]
+        image_list = [{'image': f, 'filename': (os.path.splitext(f.split("/")[-2])[0] + '_' + os.path.splitext(f.split("/")[-1])[0])} for f in file_list]
     print ('No. of files: %d' % len(image_list))
     return image_list
 
@@ -31,6 +35,7 @@ def read_dataset(data_dir):
     pickle_filename = "dataset.pickle"
     pickle_filepath = os.path.join(data_dir, pickle_filename)
     if not os.path.exists(pickle_filepath):
+        print('Here')
         result = create_image_lists(data_dir)
         print ("Pickling ...")
         with open(pickle_filepath, 'wb') as f:
@@ -55,6 +60,7 @@ def create_image_lists(image_dir):
     image_list = {}
 
     for directory in directories:
+        print('Here')
         file_list = []
         image_list[directory] = []
         file_glob = os.path.join(image_dir, "images", directory, '*.' + 'png')
@@ -64,12 +70,15 @@ def create_image_lists(image_dir):
             print('No files found')
         else:
             for f in file_list:
+                print(f)
                 filename = os.path.splitext(f.split("/")[-1])[0]
-                annotation_file = os.path.join(image_dir, "annotations", directory, "label_" + filename + '.png')
+                annotation_file = os.path.join(image_dir, "annotations", directory, filename + '_label' + '.png')
+                print(annotation_file)
                 if os.path.exists(annotation_file):
                     record = {'image': f, 'annotation': annotation_file, 'filename': filename}
                     image_list[directory].append(record)
                 else:
+                    print(annotation_file)
                     print("Annotation file not found for %s - Skipping" % filename)
 
         random.shuffle(image_list[directory])
