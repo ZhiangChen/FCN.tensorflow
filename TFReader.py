@@ -26,7 +26,6 @@ class DatasetReader:
         self.records = {}
         self.records["image"] =  [record['image'] for record in records_list]
         self.records["filename"] =  [record['filename'] for record in records_list]
-#         print(self.records['filename'])
         if not self.image_options.get("predict_dataset", False):
             self.records["annotation"] = [record['annotation'] for record in records_list]
 

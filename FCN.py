@@ -139,7 +139,7 @@ def train(loss_val, var_list):
     optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
     grads = optimizer.compute_gradients(loss_val, var_list=var_list)
     if FLAGS.debug:
-        # print(len(var_list))
+        print(len(var_list))
         for grad, var in grads:
             utils.add_gradient_summary(grad, var)
     return optimizer.apply_gradients(grads)
@@ -148,9 +148,7 @@ def train(loss_val, var_list):
 def main(argv=None):
     with tf.device('/device:GPU:1'):
         keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
-#         image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
         image = tf.placeholder(tf.float32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name="input_image")
-#         annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
         annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 1], name="annotation")
 
         pred_annotation, logits = inference(image, keep_probability)
@@ -172,7 +170,6 @@ def main(argv=None):
         summary_op = tf.summary.merge_all()
 
         print("Setting up image reader...")
-    print('Here')
     train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
     print("No. train records: ", len(train_records))
     print("No. validation records: ", len(valid_records))
@@ -216,10 +213,7 @@ def main(argv=None):
             next_train_images, next_train_annotations, next_train_name = it_train.get_next()
             next_val_images, next_val_annotations, next_val_name = it_val.get_next()
             for i in xrange(MAX_ITERATION):
-    #             print(sess.run(next_train_name))
                 train_images, train_annotations = sess.run([next_train_images, next_train_annotations])
-    #             print(train_images)
-    #             print(train_annotations)
                 feed_dict = {image: train_images, annotation: train_annotations, keep_probability: (1 - FLAGS.dropout)}
 
                 sess.run(train_op, feed_dict=feed_dict)
