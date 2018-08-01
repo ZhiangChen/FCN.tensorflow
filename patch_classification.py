@@ -20,11 +20,10 @@ tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 tf.flags.DEFINE_bool('image_augmentation', "False", "Image augmentation: True/ False")
 tf.flags.DEFINE_float('dropout', "0.5", "Probably of keeping value in dropout (valid values (0.0,1.0]")
 tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize/ predict") #test not implemented
-tf.flags.DEFINE_float('pos_weight', '1', 'Weight for FNs, higher increases recall')
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
-MAX_ITERATION = int(1e5 + 1)
+MAX_ITERATION = int(5e4+1)
 NUM_OF_CLASSESS = FLAGS.class_num
 # IMAGE_SIZE = 224
 IMAGE_WIDTH = 224
@@ -92,14 +91,15 @@ def inference(image, keep_prob):
 
         pool5 = utils.max_pool_2x2(conv_final_layer)
 
-        W6 = utils.weight_variable([7, 7, 512, 4096], name="W6")
+        # A strided convolution downsamples 7x7 feature map to 4x4
+        W6 = utils.weight_variable([3, 3, 512, 4096], name="W6")
         b6 = utils.bias_variable([4096], name="b6")
-        conv6 = utils.conv2d_basic(pool5, W6, b6)
+        conv6 = utils.conv2d_strided(pool5, W6, b6)
         relu6 = tf.nn.relu(conv6, name="relu6")
         if FLAGS.debug:
             utils.add_activation_summary(relu6)
         relu_dropout6 = tf.nn.dropout(relu6, keep_prob=keep_prob)
-
+        
         W7 = utils.weight_variable([1, 1, 4096, 4096], name="W7")
         b7 = utils.bias_variable([4096], name="b7")
         conv7 = utils.conv2d_basic(relu_dropout6, W7, b7)
@@ -111,30 +111,10 @@ def inference(image, keep_prob):
         W8 = utils.weight_variable([1, 1, 4096, NUM_OF_CLASSESS], name="W8")
         b8 = utils.bias_variable([NUM_OF_CLASSESS], name="b8")
         conv8 = utils.conv2d_basic(relu_dropout7, W8, b8)
-        # annotation_pred1 = tf.argmax(conv8, dimension=3, name="prediction1")
 
-        # now to upscale to actual image size
-        deconv_shape1 = image_net["pool4"].get_shape()
-        W_t1 = utils.weight_variable([4, 4, deconv_shape1[3].value, NUM_OF_CLASSESS], name="W_t1")
-        b_t1 = utils.bias_variable([deconv_shape1[3].value], name="b_t1")
-        conv_t1 = utils.conv2d_transpose_strided(conv8, W_t1, b_t1, output_shape=tf.shape(image_net["pool4"]))
-        fuse_1 = tf.add(conv_t1, image_net["pool4"], name="fuse_1")
+        annotation_pred = tf.argmax(conv8, axis=3, name="prediction")
 
-        deconv_shape2 = image_net["pool3"].get_shape()
-        W_t2 = utils.weight_variable([4, 4, deconv_shape2[3].value, deconv_shape1[3].value], name="W_t2")
-        b_t2 = utils.bias_variable([deconv_shape2[3].value], name="b_t2")
-        conv_t2 = utils.conv2d_transpose_strided(fuse_1, W_t2, b_t2, output_shape=tf.shape(image_net["pool3"]))
-        fuse_2 = tf.add(conv_t2, image_net["pool3"], name="fuse_2")
-
-        shape = tf.shape(image)
-        deconv_shape3 = tf.stack([shape[0], shape[1], shape[2], NUM_OF_CLASSESS])
-        W_t3 = utils.weight_variable([16, 16, NUM_OF_CLASSESS, deconv_shape2[3].value], name="W_t3")
-        b_t3 = utils.bias_variable([NUM_OF_CLASSESS], name="b_t3")
-        conv_t3 = utils.conv2d_transpose_strided(fuse_2, W_t3, b_t3, output_shape=deconv_shape3, stride=8)
-
-        annotation_pred = tf.argmax(conv_t3, axis=3, name="prediction")
-
-    return tf.expand_dims(annotation_pred, dim=3), conv_t3
+    return tf.expand_dims(annotation_pred, dim=3), conv8
 
 
 def train(loss_val, var_list):
@@ -148,26 +128,20 @@ def train(loss_val, var_list):
 
 
 def main(argv=None):
-    with tf.device('/device:GPU:1'):
+    with tf.device('/device:GPU:0'):
         keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
-#         image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
         image = tf.placeholder(tf.float32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name="input_image")
-#         annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
-        annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 1], name="annotation")
+        annotation = tf.placeholder(tf.int32, shape=[None, 4, 4, 1], name="annotation")
 
         pred_annotation, logits = inference(image, keep_probability)
         tf.summary.image("input_image", image, max_outputs=FLAGS.batch_size)
         tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs=FLAGS.batch_size)
         tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=FLAGS.batch_size)
-        if FLAGS.pos_weight == 1:
-            loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
+        loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
                                                                               labels=tf.squeeze(annotation, squeeze_dims=[3]),
                                                                               name="entropy")))
-        else:
-            loss = tf.reduce_mean((tf.nn.weighted_cross_entropy_with_logits(targets = tf.one_hot(tf.squeeze(annotation, squeeze_dims=[3]), FLAGS.class_num, axis=-1),
-                                                                              logits=logits,
-                                                                              pos_weight=tf.constant([1, 1, 1, 1, FLAGS.pos_weight]),
-                                                                              name="entropy")))
+        # tf.nn.weighted_cross_entropy_with_logits
+        
         loss_summary = tf.summary.scalar("entropy", loss)
 
         trainable_var = tf.trainable_variables()
@@ -181,7 +155,8 @@ def main(argv=None):
 
         print("Setting up image reader...")
     print('Here')
-    train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
+    train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir, pwc=True)
+#     print(valid_records)
     print("No. train records: ", len(train_records))
     print("No. validation records: ", len(valid_records))
 
@@ -190,10 +165,10 @@ def main(argv=None):
     image_options_val = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT}
     if FLAGS.mode == 'train':
         train_val_dataset = dataset.TrainVal.from_records(
-            train_records, valid_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size)
+            train_records, valid_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size, pwc=True)
     #validation_dataset_reader = dataset.BatchDatset(valid_records, image_options_val)
 
-    with tf.device('/device:GPU:1'):
+    with tf.device('/device:GPU:0'):
         config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
         config.gpu_options.allow_growth = True
         sess = tf.Session(config= config)
@@ -225,7 +200,8 @@ def main(argv=None):
             next_val_images, next_val_annotations, next_val_name = it_val.get_next()
             for i in xrange(MAX_ITERATION):
     #             print(sess.run(next_train_name))
-                train_images, train_annotations = sess.run([next_train_images, next_train_annotations])
+                train_images, train_annotations, train_name = sess.run([next_train_images, next_train_annotations, next_train_name])
+#                 print(train_annotations)
     #             print(train_images)
     #             print(train_annotations)
                 feed_dict = {image: train_images, annotation: train_annotations, keep_probability: (1 - FLAGS.dropout)}
@@ -284,7 +260,7 @@ def main(argv=None):
                 pred = sess.run(pred_annotation, feed_dict={image: predict_images,
                                                             keep_probability: 1.0})
                 pred = np.squeeze(pred, axis=3)
-                utils.save_image(((pred[0] * 255 / (NUM_OF_CLASSESS - 1))).astype(np.uint8), os.path.join(FLAGS.logs_dir, "predictions"),
+                utils.save_image((pred[0]).astype(np.uint8), os.path.join(FLAGS.logs_dir, "predictions"),
                                  name="predict_" + str(predict_names))
         
 #         predict_records = scene_parsing.read_prediction_set(FLAGS.data_dir)

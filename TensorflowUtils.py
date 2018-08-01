@@ -19,6 +19,20 @@ def get_model_data(dir_path, model_url):
     data = scipy.io.loadmat(filepath)
     return data
 
+def get_cnet_data():
+    
+    data = []
+    C = 2
+    
+    for i in range(15):
+        if i % 2 == 1:
+            data.append(0)
+        else:
+            kernel = np.random.rand(3, 3, C, C)
+            bias = np.random.rand(1, C)
+            data.append([kernel, bias])
+    
+    return data
 
 def maybe_download_and_extract(dir_path, url_name, is_tarfile=False, is_zipfile=False):
     if not os.path.exists(dir_path):
@@ -72,6 +86,14 @@ def weight_variable(shape, stddev=0.02, name=None):
     else:
         return tf.get_variable(name, initializer=initial)
 
+def weight_variable_cconv(shape, stddev=0.02, name=None):
+    # print(shape)
+#     initial = tf.cast(tf.identity(tf.truncated_normal(shape, stddev=stddev)), tf.float32) + tf.truncated_normal(shape, stddev=stddev)
+    initial = tf.cast(tf.identity(tf.truncated_normal(shape, stddev=stddev)), tf.float32)
+    if name is None:
+        return tf.Variable(initial)
+    else:
+        return tf.get_variable(name, initializer=initial)
 
 def bias_variable(shape, name=None):
     initial = tf.constant(0.0, shape=shape)
@@ -91,14 +113,19 @@ def conv2d_basic(x, W, bias):
     return tf.nn.bias_add(conv, bias)
 
 
+def conv2d_dilated(x, W, bias, rate = 2):
+    rate = int(rate)
+    conv = tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], dilations = [1, rate, rate, 1], padding="SAME")
+    return tf.nn.bias_add(conv, bias)
+
+
 def conv2d_strided(x, W, b):
     conv = tf.nn.conv2d(x, W, strides=[1, 2, 2, 1], padding="SAME")
     return tf.nn.bias_add(conv, b)
 
 
 def conv2d_transpose_strided(x, W, b, output_shape=None, stride = 2):
-    # print x.get_shape()
-    # print W.get_shape()
+
     if output_shape is None:
         output_shape = x.get_shape().as_list()
         output_shape[1] *= 2

@@ -31,12 +31,17 @@ def read_prediction_set(data_dir):
     print ('No. of files: %d' % len(image_list))
     return image_list
 
-def read_dataset(data_dir):
-    pickle_filename = "dataset.pickle"
+def read_dataset(data_dir, pwc=False):
+    if not pwc:
+        pickle_filename = "dataset.pickle"
+    else:
+        pickle_filename = "dataset_pwc.pickle"
     pickle_filepath = os.path.join(data_dir, pickle_filename)
     if not os.path.exists(pickle_filepath):
-        print('Here')
-        result = create_image_lists(data_dir)
+        if not pwc:
+            result = create_image_lists(data_dir)
+        else:
+            result = create_image_lists_pwc(data_dir)
         print ("Pickling ...")
         with open(pickle_filepath, 'wb') as f:
             pickle.dump(result, f, pickle.HIGHEST_PROTOCOL)
@@ -70,10 +75,48 @@ def create_image_lists(image_dir):
             print('No files found')
         else:
             for f in file_list:
-                print(f)
+#                 print(f)
                 filename = os.path.splitext(f.split("/")[-1])[0]
-                annotation_file = os.path.join(image_dir, "annotations", directory, filename + '_label' + '.png')
-                print(annotation_file)
+                annotation_file = os.path.join(image_dir, "annotations", directory, 'label_' + filename + '.png')
+#                 print(annotation_file)
+                if os.path.exists(annotation_file):
+                    record = {'image': f, 'annotation': annotation_file, 'filename': filename}
+                    image_list[directory].append(record)
+                else:
+                    print(annotation_file)
+                    print("Annotation file not found for %s - Skipping" % filename)
+
+        random.shuffle(image_list[directory])
+        no_of_images = len(image_list[directory])
+        print ('No. of %s files: %d' % (directory, no_of_images))
+
+    return image_list
+
+
+# Read annotation for patch-wise classification
+def create_image_lists_pwc(image_dir):
+    print(image_dir)
+    if not gfile.Exists(image_dir):
+        print("Image directory '" + image_dir + "' not found.")
+        return None
+    directories = ['training', 'validation']
+    image_list = {}
+
+    for directory in directories:
+        file_list = []
+        image_list[directory] = []
+        print(os.path.join(image_dir, "images", directory))
+        file_glob = os.path.join(image_dir, "images", directory, '*.' + 'png')
+        file_list.extend(glob.glob(file_glob))
+
+        if not file_list:
+            print('No files found')
+        else:
+            for f in file_list:
+#                 print(f)
+                filename = os.path.splitext(f.split("/")[-1])[0]
+                annotation_file = os.path.join(image_dir, "annotations_patch_classify", directory, 'label_' + filename + '.png')
+#                 print(annotation_file)
                 if os.path.exists(annotation_file):
                     record = {'image': f, 'annotation': annotation_file, 'filename': filename}
                     image_list[directory].append(record)

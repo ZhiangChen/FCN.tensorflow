@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.contrib.data import Dataset, Iterator
+# from tensorflow.contrib.data import Dataset, Iterator
 
 class DatasetReader:
     filenames = []
@@ -7,7 +7,7 @@ class DatasetReader:
     label_filenames = []
     image_options = {}
 
-    def __init__(self, records_list, image_options={}, batch_size=1):
+    def __init__(self, records_list, image_options={}, batch_size=1, pwc=False):
         """
         Intialize a generic file reader with batching for list of files
         :param records_list: list of file records to read -
@@ -32,14 +32,16 @@ class DatasetReader:
 
         #tf_records_placeholder = tf.placeholder(self.records)
         if 'annotation' in self.records:
-            self.dataset = Dataset.from_tensor_slices((self.records['image'], self.records['filename'],
+            self.dataset = tf.data.Dataset.from_tensor_slices((self.records['image'], self.records['filename'],
                                                       self.records['annotation']))
         else:
-            self.dataset = Dataset.from_tensor_slices((self.records['image'], self.records['filename']))
-
+            self.dataset = tf.data.Dataset.from_tensor_slices((self.records['image'], self.records['filename']))
+        
+        self.pwc=pwc
         self.dataset = self.dataset.map(self._input_parser)
         self.dataset = self.dataset.batch(batch_size)
         self.dataset = self.dataset.repeat()
+        
 
     def _input_parser(self, image_filename, name, annotation_filename=None):
         #Based on https://github.com/tensorflow/tensorflow/issues/9356, decode_jpeg and decode_png both decode both formats
@@ -50,7 +52,9 @@ class DatasetReader:
         annotation = None
         if annotation_filename is not None:
             annotation = tf.image.decode_png(tf.read_file(annotation_filename))
-            if self.image_options.get("resize", False):
+            print(annotation.shape)
+            if self.image_options.get("resize", False) and not self.pwc:
+                print('reshaping annotation')
                 annotation = tf.image.resize_images(annotation,
                                                (self.image_options["resize_height"], self.image_options["resize_width"]))
         if self.image_options.get("image_augmentation", False):
@@ -99,9 +103,9 @@ class TrainVal:
         return train_val
 
     @classmethod
-    def from_records(cls, train_records, val_records, train_image_options, val_image_options, train_batch_size=1, val_batch_size=1):
-        train_reader = DatasetReader(train_records, train_image_options, train_batch_size)
-        val_reader = DatasetReader(val_records, val_image_options, val_batch_size)
+    def from_records(cls, train_records, val_records, train_image_options, val_image_options, train_batch_size=1, val_batch_size=1, pwc=False):
+        train_reader = DatasetReader(train_records, train_image_options, train_batch_size, pwc)
+        val_reader = DatasetReader(val_records, val_image_options, val_batch_size, pwc)
         return cls.from_DatasetReaders(train_reader, val_reader)
 
     def _create_iterators(self):
