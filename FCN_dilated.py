@@ -176,16 +176,6 @@ def inference(image, keep_prob, enable_context):
     convd_4 = utils.conv2d_dilated(relud_3, Wd_4, bd_4, rate=4)
     relud_4 = tf.nn.relu(convd_4, name='relud_4')
     
-#     Wd_5 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_5")
-#     bd_5 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_5")
-#     convd_5 = utils.conv2d_dilated(relud_4, Wd_5, bd_5, rate=8)
-#     relud_5 = tf.nn.relu(convd_5, name='relud_5')
-    
-#     Wd_6 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_6")
-#     bd_6 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_6")
-#     convd_6 = utils.conv2d_dilated(relud_5, Wd_6, bd_6, rate=16)
-#     relud_6 = tf.nn.relu(convd_6, name='relud_6')
-    
     Wd_7 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_7")
     bd_7 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_7")
     convd_7 = utils.conv2d_dilated(relud_4, Wd_7, bd_7, rate=1)

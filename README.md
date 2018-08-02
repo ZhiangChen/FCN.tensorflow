@@ -18,6 +18,12 @@ The implementation is largely based on the reference code provided by the author
  - `debug` flag can be set during training to add information regarding activations, gradients, variables etc.
  - The [IPython notebook](https://github.com/shekkizh/FCN.tensorflow/blob/master/logs/images/Image_Cmaped.ipynb) in logs folder can be used to view results in color as below.
 
+## This branch
+- Added dilation according to https://arxiv.org/abs/1511.07122
+- Added test phase code
+- The code is written and tested with `tensorflow1.8.0` and `python2.7.12`
+- To make the denseCRF to work, prerequsites are `Cython>=0.22`, `pydensecrf`
+
 ## Results
 Results were obtained by training the model in batches of 2 with resized image of 256x256. Note that although the training is done at this image size - Nothing prevents the model from working on arbitrary sized images. No post processing was done on the predicted images. Training was done for 9 epochs - The shorter training time explains why certain concepts seem semantically understood by the model while others were not. Results below are from randomly chosen images from validation dataset.
 
