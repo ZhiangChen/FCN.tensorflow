@@ -11,6 +11,7 @@ from six.moves import xrange
 
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer("batch_size", "2", "batch size for training")
+tf.flags.DEFINE_integer("class_num", "2", "number of classes")
 tf.flags.DEFINE_string("logs_dir", "logs3/", "path to logs directory")
 tf.flags.DEFINE_string("data_dir", "/notebooks/FCN.tensorflow/dataroot/", "path to dataset")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
@@ -25,7 +26,7 @@ tf.flags.DEFINE_bool('tune_context', 'False', 'Tune context subnet')
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
 MAX_ITERATION = int(1.5e5)
-NUM_OF_CLASSESS = 4
+NUM_OF_CLASSESS = FLAGS.class_num
 IMAGE_WIDTH = 224
 IMAGE_HEIGHT = 224
 
@@ -240,6 +241,7 @@ def main(argv=None):
         
         loss_summary = tf.summary.scalar("entropy", loss)
         loss_summary_ctx = tf.summary.scalar("entropy", loss_ctx)
+        iou_error, update_op = tf.metrics.mean_iou(pred_annotation_ctx, annotation, NUM_OF_CLASSESS)
         
         # Now all training will be done in one run
         if FLAGS.tune_context == True:
@@ -286,6 +288,7 @@ def main(argv=None):
         validation_writer = tf.summary.FileWriter(FLAGS.logs_dir + '/validation')
 
         sess.run(tf.global_variables_initializer())
+        sess.run(tf.local_variables_initializer())
         ckpt = tf.train.get_checkpoint_state(FLAGS.logs_dir)
         trained_mainnet = False
         if ckpt and ckpt.model_checkpoint_path:
@@ -419,6 +422,31 @@ def main(argv=None):
                                  name="predict_" + str(predict_names))
 #                 np.save(os.path.join(FLAGS.logs_dir, "predictions", "predict_prob_" + str(predict_names)), logits)
 
+
+        elif FLAGS.mode == "test":
+            
+            test_records, _ = scene_parsing.read_dataset(FLAGS.data_dir, test = True)
+            image_options_train = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT, 'image_augmentation':False}
+            image_options_val = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT}
+            
+            test_dataset = dataset.TrainVal.from_records(
+            test_records, test_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size)
+            
+            iou_result = np.zeros([int(np.ceil(len(test_records) / FLAGS.batch_size))])
+            it_test, _ = test_dataset.get_iterators()
+            next_test_images, next_test_annotations, next_test_name = it_test.get_next()
+            for i in range(int(np.ceil(len(test_records) / FLAGS.batch_size))):
+                test_images, test_annotations = sess.run([next_test_images, next_test_annotations])
+                feed_dict = {image: test_images, annotation: test_annotations, keep_probability: 1.0}
+                
+                confusion = sess.run(update_op, feed_dict=feed_dict)
+                mean_iou = sess.run(iou_error)
+                print("Test batch {}, mean iou {}".format(i, mean_iou))
+                print(confusion)
+                
+                iou_result[i] = mean_iou
+                
+#             print("Final IoU: {}".format(np.mean(iou_result)))
 
 if __name__ == "__main__":
   tf.app.run()

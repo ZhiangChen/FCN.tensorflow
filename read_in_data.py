@@ -31,17 +31,18 @@ def read_prediction_set(data_dir):
     print ('No. of files: %d' % len(image_list))
     return image_list
 
-def read_dataset(data_dir, pwc=False):
+def read_dataset(data_dir, pwc=False, test=False):
     if not pwc:
         pickle_filename = "dataset.pickle"
     else:
         pickle_filename = "dataset_pwc.pickle"
     pickle_filepath = os.path.join(data_dir, pickle_filename)
+    print(pickle_filepath)
     if not os.path.exists(pickle_filepath):
         if not pwc:
-            result = create_image_lists(data_dir)
+            result = create_image_lists(data_dir, test)
         else:
-            result = create_image_lists_pwc(data_dir)
+            result = create_image_lists_pwc(data_dir, test)
         print ("Pickling ...")
         with open(pickle_filepath, 'wb') as f:
             pickle.dump(result, f, pickle.HIGHEST_PROTOCOL)
@@ -51,17 +52,23 @@ def read_dataset(data_dir, pwc=False):
     with open(pickle_filepath, 'rb') as f:
         result = pickle.load(f)
         training_records = result['training']
-        validation_records = result['validation']
+        if not test:
+            validation_records = result['validation']
+        else:
+            validation_records = None
         del result
 
     return training_records, validation_records
 
 
-def create_image_lists(image_dir):
+def create_image_lists(image_dir, test=False):
     if not gfile.Exists(image_dir):
         print("Image directory '" + image_dir + "' not found.")
         return None
-    directories = ['training', 'validation']
+    if not test:
+        directories = ['training', 'validation']
+    else:
+        directories = ['training']
     image_list = {}
 
     for directory in directories:
@@ -94,12 +101,15 @@ def create_image_lists(image_dir):
 
 
 # Read annotation for patch-wise classification
-def create_image_lists_pwc(image_dir):
+def create_image_lists_pwc(image_dir, test=False):
     print(image_dir)
     if not gfile.Exists(image_dir):
         print("Image directory '" + image_dir + "' not found.")
         return None
-    directories = ['training', 'validation']
+    if not test:
+        directories = ['training', 'validation']
+    else:
+        directories = ['training']
     image_list = {}
 
     for directory in directories:

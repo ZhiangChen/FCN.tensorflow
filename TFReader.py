@@ -52,9 +52,9 @@ class DatasetReader:
         annotation = None
         if annotation_filename is not None:
             annotation = tf.image.decode_png(tf.read_file(annotation_filename))
-            print(annotation.shape)
+#             print(annotation.shape)
             if self.image_options.get("resize", False) and not self.pwc:
-                print('reshaping annotation')
+#                 print('reshaping annotation')
                 annotation = tf.image.resize_images(annotation,
                                                (self.image_options["resize_height"], self.image_options["resize_width"]))
         if self.image_options.get("image_augmentation", False):
