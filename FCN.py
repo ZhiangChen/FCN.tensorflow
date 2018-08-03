@@ -12,6 +12,7 @@ from six.moves import xrange
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer("batch_size", "2", "batch size for training")
 tf.flags.DEFINE_integer("class_num", "2", "number of classes")
+tf.flags.DEFINE_integer("gpu", "0", "specify which GPU to use")
 tf.flags.DEFINE_string("logs_dir", "logs/", "path to logs directory")
 tf.flags.DEFINE_string("data_dir", "Data_zoo/dataset/", "path to dataset")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
@@ -148,7 +149,7 @@ def train(loss_val, var_list):
 
 
 def main(argv=None):
-    with tf.device('/device:GPU:1'):
+    with tf.device('/device:GPU:' + str(FLAGS.gpu)):
         keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
 #         image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
         image = tf.placeholder(tf.float32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name="input_image")
@@ -194,7 +195,7 @@ def main(argv=None):
             train_records, valid_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size)
     #validation_dataset_reader = dataset.BatchDatset(valid_records, image_options_val)
 
-    with tf.device('/device:GPU:1'):
+    with tf.device('/device:GPU:' + str(FLAGS.gpu)):
         config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
         config.gpu_options.allow_growth = True
         sess = tf.Session(config= config)
