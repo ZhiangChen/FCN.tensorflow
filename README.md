@@ -4,7 +4,7 @@ Tensorflow implementation of [Fully Convolutional Networks for Semantic Segmenta
 The implementation is largely based on the reference code provided by the authors of the paper [link](https://github.com/shelhamer/fcn.berkeleyvision.org). The model was applied on the Scene Parsing Challenge dataset provided by MIT [http://sceneparsing.csail.mit.edu/](http://sceneparsing.csail.mit.edu/).
 
 1. [Prerequisites](#prerequisites)
-2. [This branch](#This branch)
+2. [This branch](#this branch)
 3. [Results](#results)
 4. [Observations](#observations)
 5. [Useful links](#useful-links)
@@ -23,7 +23,18 @@ The implementation is largely based on the reference code provided by the author
 - Added dilation according to https://arxiv.org/abs/1511.07122
 - Added test phase code
 - The code is written and tested with `tensorflow1.8.0` and `python2.7.12`
-- To make the denseCRF to work, prerequsites are `Cython>=0.22`, `pydensecrf`
+- To make the denseCRF to work, prerequsites are `Cython>=0.22`, `pydensecrf` (not tested yet)
+- `For FCN run 
+python FCN.py --class_num 2 --gpu 0 --batch_size 8 --logs_dir xxxx/xxxx/ --data_dir xxxx/xxxx/` (edited)
+ For dilated FCN, first train the front-end VGG by
+`python FCN_dilated.py --class_num 2 --gpu 0 --batch_size 8 --logs_dir path/to/vgg/ --data_dir path/to/data/`
+Then use the trained VGG to tune context subnet
+`python FCN_dilated.py --class_num 2 --gpu 0 --batch_size 8 --mainnet_dir path/to/vgg/ --logs_dir path/to/model/ --data_dir path/to/data/ --tune_context True`
+Or directly running
+`python FCN_dilated.py --class_num 2 --gpu 0 --batch_size 8 --logs_dir path/to/model/ --data_dir path/to/data/ --tune_context True`
+should work well (edited)
+For prediction run with `--mode predict` and other options, `batch_size` will be ignored.
+For test run with `--mode test`, for now this gives pixel-wise IoU. Tensorflow aggregates per-batch IoU. A larger `--batch_size` can be used, I was trying 32
 
 ## Results
 Results were obtained by training the model in batches of 2 with resized image of 256x256. Note that although the training is done at this image size - Nothing prevents the model from working on arbitrary sized images. No post processing was done on the predicted images. Training was done for 9 epochs - The shorter training time explains why certain concepts seem semantically understood by the model while others were not. Results below are from randomly chosen images from validation dataset.
