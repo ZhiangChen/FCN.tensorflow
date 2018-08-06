@@ -112,98 +112,98 @@ def context_net(weights, fmap):
     cnet[name] = current
   return cnet
 
-# Inference, context concat
-def inference(image, keep_prob, enable_context):
-  """
-  Semantic segmentation network definition
-  :param image: input image. Should have values in range 0-255
-  :param keep_prob:
-  :return:
-  """
-  print("setting up vgg initialized conv layers ...")
-  model_data = utils.get_model_data(FLAGS.model_dir, MODEL_URL)
+# # Inference, context concat
+# def inference(image, keep_prob, enable_context):
+#   """
+#   Semantic segmentation network definition
+#   :param image: input image. Should have values in range 0-255
+#   :param keep_prob:
+#   :return:
+#   """
+#   print("setting up vgg initialized conv layers ...")
+#   model_data = utils.get_model_data(FLAGS.model_dir, MODEL_URL)
 
-  mean = model_data['normalization'][0][0][0]
-  mean_pixel = np.mean(mean, axis=(0, 1))
+#   mean = model_data['normalization'][0][0][0]
+#   mean_pixel = np.mean(mean, axis=(0, 1))
 
-  weights = np.squeeze(model_data['layers'])
-  # Identity initialization
-  weights_cnet = utils.get_cnet_data()
+#   weights = np.squeeze(model_data['layers'])
+#   # Identity initialization
+#   weights_cnet = utils.get_cnet_data()
 
-  processed_image = utils.process_image(image, mean_pixel)
+#   processed_image = utils.process_image(image, mean_pixel)
 
-  with tf.variable_scope("inference", reuse = tf.AUTO_REUSE):
-    image_net = vgg_dilated(weights, processed_image)
+#   with tf.variable_scope("inference", reuse = tf.AUTO_REUSE):
+#     image_net = vgg_dilated(weights, processed_image)
     
-    conv_final_layer = image_net['conv5_3']
+#     conv_final_layer = image_net['conv5_3']
 
-    W6 = utils.weight_variable([7, 7, 512, 4096], name="W6")
-    b6 = utils.bias_variable([4096], name="b6")
-    conv6 = utils.conv2d_dilated(conv_final_layer, W6, b6, rate = 4)
-    relu6 = tf.nn.relu(conv6, name="relu6")
-    if FLAGS.debug:
-      utils.add_activation_summary(relu6)
-    relu_dropout6 = tf.nn.dropout(relu6, keep_prob=keep_prob)
+#     W6 = utils.weight_variable([7, 7, 512, 4096], name="W6")
+#     b6 = utils.bias_variable([4096], name="b6")
+#     conv6 = utils.conv2d_dilated(conv_final_layer, W6, b6, rate = 4)
+#     relu6 = tf.nn.relu(conv6, name="relu6")
+#     if FLAGS.debug:
+#       utils.add_activation_summary(relu6)
+#     relu_dropout6 = tf.nn.dropout(relu6, keep_prob=keep_prob)
 
-    W7 = utils.weight_variable([1, 1, 4096, 4096], name="W7")
-    b7 = utils.bias_variable([4096], name="b7")
-    conv7 = utils.conv2d_basic(relu_dropout6, W7, b7)
-    relu7 = tf.nn.relu(conv7, name="relu7")
-    if FLAGS.debug:
-      utils.add_activation_summary(relu7)
-    relu_dropout7 = tf.nn.dropout(relu7, keep_prob=keep_prob)
+#     W7 = utils.weight_variable([1, 1, 4096, 4096], name="W7")
+#     b7 = utils.bias_variable([4096], name="b7")
+#     conv7 = utils.conv2d_basic(relu_dropout6, W7, b7)
+#     relu7 = tf.nn.relu(conv7, name="relu7")
+#     if FLAGS.debug:
+#       utils.add_activation_summary(relu7)
+#     relu_dropout7 = tf.nn.dropout(relu7, keep_prob=keep_prob)
 
-    W8 = utils.weight_variable([1, 1, 4096, NUM_OF_CLASSESS], name="W8")
-    b8 = utils.bias_variable([NUM_OF_CLASSESS], name="b8")
-    conv8 = utils.conv2d_basic(relu_dropout7, W8, b8)
+#     W8 = utils.weight_variable([1, 1, 4096, NUM_OF_CLASSESS], name="W8")
+#     b8 = utils.bias_variable([NUM_OF_CLASSESS], name="b8")
+#     conv8 = utils.conv2d_basic(relu_dropout7, W8, b8)
     
-  # Contextual network part
-  with tf.variable_scope("context", reuse = tf.AUTO_REUSE):
-    Wd_1 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_1")
-    bd_1 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_1")
-    convd_1 = utils.conv2d_dilated(conv8, Wd_1, bd_1, rate=1)
-    relud_1 = tf.nn.relu(convd_1, name='relud_1')
+#   # Contextual network part
+#   with tf.variable_scope("context", reuse = tf.AUTO_REUSE):
+#     Wd_1 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_1")
+#     bd_1 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_1")
+#     convd_1 = utils.conv2d_dilated(conv8, Wd_1, bd_1, rate=1)
+#     relud_1 = tf.nn.relu(convd_1, name='relud_1')
     
-    Wd_2 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_2")
-    bd_2 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_2")
-    convd_2 = utils.conv2d_dilated(relud_1, Wd_2, bd_2, rate=1)
-    relud_2 = tf.nn.relu(convd_2, name='relud_2')
+#     Wd_2 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_2")
+#     bd_2 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_2")
+#     convd_2 = utils.conv2d_dilated(relud_1, Wd_2, bd_2, rate=1)
+#     relud_2 = tf.nn.relu(convd_2, name='relud_2')
     
-    Wd_3 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_3")
-    bd_3 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_3")
-    convd_3 = utils.conv2d_dilated(relud_2, Wd_3, bd_3, rate=2)
-    relud_3 = tf.nn.relu(convd_3, name='relud_3')
+#     Wd_3 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_3")
+#     bd_3 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_3")
+#     convd_3 = utils.conv2d_dilated(relud_2, Wd_3, bd_3, rate=2)
+#     relud_3 = tf.nn.relu(convd_3, name='relud_3')
     
-    Wd_4 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_4")
-    bd_4 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_4")
-    convd_4 = utils.conv2d_dilated(relud_3, Wd_4, bd_4, rate=4)
-    relud_4 = tf.nn.relu(convd_4, name='relud_4')
+#     Wd_4 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_4")
+#     bd_4 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_4")
+#     convd_4 = utils.conv2d_dilated(relud_3, Wd_4, bd_4, rate=4)
+#     relud_4 = tf.nn.relu(convd_4, name='relud_4')
 
-    relud_concat = tf.concat([relud_2, relud_3, relud_4], axis=3, name='relud_concat')
+#     relud_concat = tf.concat([relud_2, relud_3, relud_4], axis=3, name='relud_concat')
     
-    Wd_7 = utils.weight_variable_cconv([3, 3, 3*NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_7")
-    bd_7 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_7")
-    convd_7 = utils.conv2d_dilated(relud_concat, Wd_7, bd_7, rate=1)
-    relud_7 = tf.nn.relu(convd_7, name='relud_7')
+#     Wd_7 = utils.weight_variable_cconv([3, 3, 3*NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_7")
+#     bd_7 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_7")
+#     convd_7 = utils.conv2d_dilated(relud_concat, Wd_7, bd_7, rate=1)
+#     relud_7 = tf.nn.relu(convd_7, name='relud_7')
     
-    Wd_8 = utils.weight_variable_cconv([1, 1, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_8")
-    bd_8 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_8")
-    convd_8 = utils.conv2d_dilated(relud_7, Wd_8, bd_8, rate=1)
+#     Wd_8 = utils.weight_variable_cconv([1, 1, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_8")
+#     bd_8 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_8")
+#     convd_8 = utils.conv2d_dilated(relud_7, Wd_8, bd_8, rate=1)
 
-  with tf.variable_scope("final", reuse = tf.AUTO_REUSE):
-    # now to upscale to actual image size
-    shape = tf.shape(image)
-    deconv_shape = tf.stack([shape[0], shape[1], shape[2], NUM_OF_CLASSESS])
-    W_t = utils.weight_variable([16, 16, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="W_t")
-    b_t = utils.bias_variable([NUM_OF_CLASSESS], name="b_t")
-    if enable_context == False:
-        conv_t3 = utils.conv2d_transpose_strided(conv8, W_t, b_t, output_shape=deconv_shape, stride=8)
-    else:
-        conv_t3 = utils.conv2d_transpose_strided(convd_8, W_t, b_t, output_shape=deconv_shape, stride=8)
+#   with tf.variable_scope("final", reuse = tf.AUTO_REUSE):
+#     # now to upscale to actual image size
+#     shape = tf.shape(image)
+#     deconv_shape = tf.stack([shape[0], shape[1], shape[2], NUM_OF_CLASSESS])
+#     W_t = utils.weight_variable([16, 16, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="W_t")
+#     b_t = utils.bias_variable([NUM_OF_CLASSESS], name="b_t")
+#     if enable_context == False:
+#         conv_t3 = utils.conv2d_transpose_strided(conv8, W_t, b_t, output_shape=deconv_shape, stride=8)
+#     else:
+#         conv_t3 = utils.conv2d_transpose_strided(convd_8, W_t, b_t, output_shape=deconv_shape, stride=8)
 
-    annotation_pred = tf.argmax(conv_t3, dimension=3, name="prediction")
+#     annotation_pred = tf.argmax(conv_t3, dimension=3, name="prediction")
 
-  return tf.expand_dims(annotation_pred, dim=3), conv_t3
+#   return tf.expand_dims(annotation_pred, dim=3), conv_t3
 
 
 # # Inference, deeper context net
@@ -433,104 +433,105 @@ def inference(image, keep_prob, enable_context):
 #   return tf.expand_dims(annotation_pred, dim=3), conv_t3
 
 
-# # Inference, denseCRF
-# def inference(image, keep_prob, enable_context):
-#   """
-#   Semantic segmentation network definition
-#   :param image: input image. Should have values in range 0-255
-#   :param keep_prob:
-#   :return:
-#   """
-#   print("setting up vgg initialized conv layers ...")
-#   model_data = utils.get_model_data(FLAGS.model_dir, MODEL_URL)
+# Inference, denseCRF
+def inference(image, keep_prob, enable_context):
+  """
+  Semantic segmentation network definition
+  :param image: input image. Should have values in range 0-255
+  :param keep_prob:
+  :return:
+  """
+  print("setting up vgg initialized conv layers ...")
+  model_data = utils.get_model_data(FLAGS.model_dir, MODEL_URL)
 
-#   mean = model_data['normalization'][0][0][0]
-#   mean_pixel = np.mean(mean, axis=(0, 1))
+  mean = model_data['normalization'][0][0][0]
+  mean_pixel = np.mean(mean, axis=(0, 1))
 
-#   weights = np.squeeze(model_data['layers'])
-#   # Identity initialization
-#   weights_cnet = utils.get_cnet_data()
+  weights = np.squeeze(model_data['layers'])
+  # Identity initialization
+  weights_cnet = utils.get_cnet_data()
 
-#   processed_image = utils.process_image(image, mean_pixel)
+  processed_image = utils.process_image(image, mean_pixel)
 
-#   with tf.variable_scope("inference", reuse = tf.AUTO_REUSE):
-#     image_net = vgg_dilated(weights, processed_image)
+  with tf.variable_scope("inference", reuse = tf.AUTO_REUSE):
+    image_net = vgg_dilated(weights, processed_image)
     
-#     conv_final_layer = image_net['conv5_3']
+    conv_final_layer = image_net['conv5_3']
 
-#     W6 = utils.weight_variable([7, 7, 512, 4096], name="W6")
-#     b6 = utils.bias_variable([4096], name="b6")
-#     conv6 = utils.conv2d_dilated(conv_final_layer, W6, b6, rate = 4)
-#     relu6 = tf.nn.relu(conv6, name="relu6")
-#     if FLAGS.debug:
-#       utils.add_activation_summary(relu6)
-#     relu_dropout6 = tf.nn.dropout(relu6, keep_prob=keep_prob)
+    W6 = utils.weight_variable([7, 7, 512, 4096], name="W6")
+    b6 = utils.bias_variable([4096], name="b6")
+    conv6 = utils.conv2d_dilated(conv_final_layer, W6, b6, rate = 4)
+    relu6 = tf.nn.relu(conv6, name="relu6")
+    if FLAGS.debug:
+      utils.add_activation_summary(relu6)
+    relu_dropout6 = tf.nn.dropout(relu6, keep_prob=keep_prob)
 
-#     W7 = utils.weight_variable([1, 1, 4096, 4096], name="W7")
-#     b7 = utils.bias_variable([4096], name="b7")
-#     conv7 = utils.conv2d_basic(relu_dropout6, W7, b7)
-#     relu7 = tf.nn.relu(conv7, name="relu7")
-#     if FLAGS.debug:
-#       utils.add_activation_summary(relu7)
-#     relu_dropout7 = tf.nn.dropout(relu7, keep_prob=keep_prob)
+    W7 = utils.weight_variable([1, 1, 4096, 4096], name="W7")
+    b7 = utils.bias_variable([4096], name="b7")
+    conv7 = utils.conv2d_basic(relu_dropout6, W7, b7)
+    relu7 = tf.nn.relu(conv7, name="relu7")
+    if FLAGS.debug:
+      utils.add_activation_summary(relu7)
+    relu_dropout7 = tf.nn.dropout(relu7, keep_prob=keep_prob)
 
-#     W8 = utils.weight_variable([1, 1, 4096, NUM_OF_CLASSESS], name="W8")
-#     b8 = utils.bias_variable([NUM_OF_CLASSESS], name="b8")
-#     conv8 = utils.conv2d_basic(relu_dropout7, W8, b8)
+    W8 = utils.weight_variable([1, 1, 4096, NUM_OF_CLASSESS], name="W8")
+    b8 = utils.bias_variable([NUM_OF_CLASSESS], name="b8")
+    conv8 = utils.conv2d_basic(relu_dropout7, W8, b8)
     
-#   # Contextual network part
-#   with tf.variable_scope("context", reuse = tf.AUTO_REUSE):
-#     Wd_1 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_1")
-#     bd_1 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_1")
-#     convd_1 = utils.conv2d_dilated(conv8, Wd_1, bd_1, rate=1)
-#     relud_1 = tf.nn.relu(convd_1, name='relud_1')
+  # Contextual network part
+  with tf.variable_scope("context", reuse = tf.AUTO_REUSE):
+    Wd_1 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_1")
+    bd_1 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_1")
+    convd_1 = utils.conv2d_dilated(conv8, Wd_1, bd_1, rate=1)
+    relud_1 = tf.nn.relu(convd_1, name='relud_1')
     
-#     Wd_2 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_2")
-#     bd_2 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_2")
-#     convd_2 = utils.conv2d_dilated(relud_1, Wd_2, bd_2, rate=1)
-#     relud_2 = tf.nn.relu(convd_2, name='relud_2')
+    Wd_2 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_2")
+    bd_2 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_2")
+    convd_2 = utils.conv2d_dilated(relud_1, Wd_2, bd_2, rate=1)
+    relud_2 = tf.nn.relu(convd_2, name='relud_2')
     
-#     Wd_3 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_3")
-#     bd_3 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_3")
-#     convd_3 = utils.conv2d_dilated(relud_2, Wd_3, bd_3, rate=2)
-#     relud_3 = tf.nn.relu(convd_3, name='relud_3')
+    Wd_3 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_3")
+    bd_3 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_3")
+    convd_3 = utils.conv2d_dilated(relud_2, Wd_3, bd_3, rate=2)
+    relud_3 = tf.nn.relu(convd_3, name='relud_3')
     
-#     Wd_4 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_4")
-#     bd_4 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_4")
-#     convd_4 = utils.conv2d_dilated(relud_3, Wd_4, bd_4, rate=4)
-#     relud_4 = tf.nn.relu(convd_4, name='relud_4')
+    Wd_4 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_4")
+    bd_4 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_4")
+    convd_4 = utils.conv2d_dilated(relud_3, Wd_4, bd_4, rate=4)
+    relud_4 = tf.nn.relu(convd_4, name='relud_4')
 
-#     Wd_7 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_7")
-#     bd_7 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_7")
-#     convd_7 = utils.conv2d_dilated(relud_4, Wd_7, bd_7, rate=1)
-#     relud_7 = tf.nn.relu(convd_7, name='relud_7')
+    Wd_7 = utils.weight_variable_cconv([3, 3, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_7")
+    bd_7 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_7")
+    convd_7 = utils.conv2d_dilated(relud_4, Wd_7, bd_7, rate=1)
+    relud_7 = tf.nn.relu(convd_7, name='relud_7')
     
-#     Wd_8 = utils.weight_variable_cconv([1, 1, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_8")
-#     bd_8 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_8")
-#     convd_8 = utils.conv2d_dilated(relud_7, Wd_8, bd_8, rate=1)
+    Wd_8 = utils.weight_variable_cconv([1, 1, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="Wd_8")
+    bd_8 = utils.bias_variable([NUM_OF_CLASSESS], name="bd_8")
+    convd_8 = utils.conv2d_dilated(relud_7, Wd_8, bd_8, rate=1)
 
-#   with tf.variable_scope("final", reuse = tf.AUTO_REUSE):
-#     # now to upscale to actual image size
-#     shape = tf.shape(image)
-#     deconv_shape = tf.stack([shape[0], shape[1], shape[2], NUM_OF_CLASSESS])
-#     W_t = utils.weight_variable([16, 16, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="W_t")
-#     b_t = utils.bias_variable([NUM_OF_CLASSESS], name="b_t")
-#     if enable_context == False:
-#         conv_t3 = utils.conv2d_transpose_strided(conv8, W_t, b_t, output_shape=deconv_shape, stride=8)
-#     else:
-#         conv_t3 = utils.conv2d_transpose_strided(convd_8, W_t, b_t, output_shape=deconv_shape, stride=8)
+  with tf.variable_scope("final", reuse = tf.AUTO_REUSE):
+    # now to upscale to actual image size
+    shape = tf.shape(image)
+    deconv_shape = tf.stack([shape[0], shape[1], shape[2], NUM_OF_CLASSESS])
+    W_t = utils.weight_variable([16, 16, NUM_OF_CLASSESS, NUM_OF_CLASSESS], name="W_t")
+    b_t = utils.bias_variable([NUM_OF_CLASSESS], name="b_t")
+    if enable_context == False:
+        conv_t3 = utils.conv2d_transpose_strided(conv8, W_t, b_t, output_shape=deconv_shape, stride=8)
+    else:
+        conv_t3 = utils.conv2d_transpose_strided(convd_8, W_t, b_t, output_shape=deconv_shape, stride=8)
 
-#     # May not need this
-#     raw_output_up = tf.image.resize_bilinear(conv_t3, tf.shape(image)[0:2,])
+    # May not need this
+    raw_output_up = tf.image.resize_bilinear(conv_t3, tf.shape(image)[1:3,])
     
-#     # CRF.
-#     raw_output_up = tf.nn.softmax(raw_output_up)
+    # CRF.
+    raw_output_up = tf.nn.softmax(raw_output_up)
 #     raw_output_up = tf.py_func(dense_crf, [raw_output_up, FLAGS.class_num, tf.expand_dims(image, dim=0)], tf.float32)
+    raw_output_up = tf.py_func(dense_crf, [raw_output_up, FLAGS.class_num, image], tf.float32)
     
-#     raw_output_up = tf.argmax(raw_output_up, dimension=3)
-#     annotation_pred = tf.expand_dims(raw_output_up, dim=3)
+    raw_output_up = tf.argmax(raw_output_up, dimension=3)
+    annotation_pred = tf.expand_dims(raw_output_up, dim=3)
 
-#   return annotation_pred, conv_t3
+  return annotation_pred, conv_t3
 
 
 def train(loss_val, var_list, lr = FLAGS.learning_rate):
@@ -563,7 +564,7 @@ def main(argv=None):
         
         loss_summary = tf.summary.scalar("entropy", loss)
         loss_summary_ctx = tf.summary.scalar("entropy", loss_ctx)
-        iou_error, update_op = tf.metrics.mean_iou(pred_annotation_ctx, annotation, NUM_OF_CLASSESS)
+        iou_error, update_op = tf.metrics.mean_iou(annotation, pred_annotation_ctx, NUM_OF_CLASSESS)
         
         # Now all training will be done in one run
         if FLAGS.tune_context == True:
@@ -761,13 +762,18 @@ def main(argv=None):
                 test_images, test_annotations = sess.run([next_test_images, next_test_annotations])
                 feed_dict = {image: test_images, annotation: test_annotations, keep_probability: 1.0}
                 
-                mean_iou, confusion = sess.run([iou_error, update_op], feed_dict=feed_dict)
+#                 pred = sess.run(pred_annotation_ctx, feed_dict = {image: test_images, keep_probability: 1.0})
+#                 print(pred.dtype)
+#                 print(test_annotations.dtype)
+                
+                confusion = sess.run(update_op, feed_dict=feed_dict)
+                mean_iou = sess.run(iou_error)
                 print("Test batch {}, mean iou {}".format(i, mean_iou))
                 print(confusion)
                 
-                iou_result[i] = mean_iou
+#                 iou_result[i] = mean_iou
                 
-            print("Final IoU: {}".format(np.mean(iou_result)))
+#             print("Final IoU: {}".format(np.mean(iou_result)))
 
 if __name__ == "__main__":
   tf.app.run()

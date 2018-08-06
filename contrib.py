@@ -30,21 +30,26 @@ def dense_crf(probs, class_num, img=None, n_iters=10,
     Returns:
       Refined predictions after MAP inference.
     """
-    _, h, w, _ = probs.shape
+    n, h, w, _ = probs.shape
     
-    probs = probs[0].transpose(2, 0, 1).copy(order='C') # Need a contiguous array.
+    preds = np.zeros_like(probs)
     
-    d = dcrf.DenseCRF2D(w, h, class_num) # Define DenseCRF model.
-    U = -np.log(probs) # Unary potential.
-    U = U.reshape((class_num, -1)) # Needs to be flat.
-    d.setUnaryEnergy(U)
-    d.addPairwiseGaussian(sxy=sxy_gaussian, compat=compat_gaussian,
-                          kernel=kernel_gaussian, normalization=normalisation_gaussian)
-    if img is not None:
-        assert(img.shape[1:3] == (h, w)), "The image height and width must coincide with dimensions of the logits."
-        d.addPairwiseBilateral(sxy=sxy_bilateral, compat=compat_bilateral,
-                               kernel=kernel_bilateral, normalization=normalisation_bilateral,
-                               srgb=srgb_bilateral, rgbim=img[0])
-    Q = d.inference(n_iters)
-    preds = np.array(Q, dtype=np.float32).reshape((class_num, h, w)).transpose(1, 2, 0)
-    return np.expand_dims(preds, 0)
+    for i in range(n):
+        probs_i = probs[i].transpose(2, 0, 1).copy(order='C') + 1e-8 # Need a contiguous array.
+
+        d = dcrf.DenseCRF2D(w, h, class_num) # Define DenseCRF model.
+        U = -np.log(probs_i) # Unary potential.
+        U = U.reshape((class_num, -1)) # Needs to be flat.
+        d.setUnaryEnergy(U)
+        d.addPairwiseGaussian(sxy=sxy_gaussian, compat=compat_gaussian,
+                              kernel=kernel_gaussian, normalization=normalisation_gaussian)
+        if img is not None:
+            assert(img.shape[1:3] == (h, w)), "The image height and width must coincide with dimensions of the logits."
+            img = img.astype(np.uint8)
+            d.addPairwiseBilateral(sxy=sxy_bilateral, compat=compat_bilateral,
+                                   kernel=kernel_bilateral, normalization=normalisation_bilateral,
+                                   srgb=srgb_bilateral, rgbim=img[i])
+        Q = d.inference(n_iters)
+        preds[i, ...] = np.array(Q, dtype=np.float32).reshape((class_num, h, w)).transpose(1, 2, 0)
+    
+    return preds
