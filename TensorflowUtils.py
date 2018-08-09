@@ -8,6 +8,7 @@ from six.moves import urllib
 import tarfile
 import zipfile
 import scipy.io
+from six.moves import cPickle as pickle
 
 
 def get_model_data(dir_path, model_url):
@@ -265,3 +266,42 @@ def add_activation_summary(var):
 def add_gradient_summary(grad, var):
     if grad is not None:
         tf.summary.histogram(var.op.name + "/gradient", grad)
+
+def apply_mask_and_save(image, mask, name, dir, color, alpha = 0.3):
+    """
+    Apply mask to original image and save to the dir.
+    Zhiang Chen, Aug 2018
+    :param image: original image
+    :param mask: mask
+    :param color: (B,G,R) or "blue" or "red"
+    :param name: new image name
+    :param dir: directory to save new image
+    :param alpha: weight of original image
+    :return: None
+    """
+    if color is "blue":
+        color = (255, 50, 50)
+    if color is "red":
+        color = (50, 50, 255)
+
+    for c in range(3):
+        image[:, :, c] = np.where(mask == 255,
+                                  image[:, :, c] *
+                                  (1 - alpha) + alpha * color[c],
+                                  image[:, :, c])
+    misc.imsave(os.path.join(dir, name + ".png"), image)
+
+def save_dict(dictionary, name, dir):
+    """
+    Save dictionary to the dir.
+    Zhiang Chen, Aug 2018
+    :param dictionary: dict
+    :param name: name
+    :param dir: directory
+    :return: None
+    """
+    with open(dir+'/pickle_'+name, 'wb') as f:
+        save = dictionary
+        pickle.dump(save, f, pickle.HIGHEST_PROTOCOL)
+        f.close()
+

@@ -11,26 +11,35 @@ from six.moves import xrange
 
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer("batch_size", "2", "batch size for training")
+tf.flags.DEFINE_integer("batch_size_v", "2", "batch size for validation")
 tf.flags.DEFINE_integer("class_num", "2", "number of classes")
-tf.flags.DEFINE_integer("gpu", "0", "specify which GPU to use")
 tf.flags.DEFINE_string("logs_dir", "logs/", "path to logs directory")
 tf.flags.DEFINE_string("data_dir", "Data_zoo/dataset/", "path to dataset")
-tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
+tf.flags.DEFINE_float("learning_rate", "1e-5", "Learning rate for Adam Optimizer")
 tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 tf.flags.DEFINE_bool('image_augmentation', "False", "Image augmentation: True/ False")
 tf.flags.DEFINE_float('dropout', "0.5", "Probably of keeping value in dropout (valid values (0.0,1.0]")
-tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize/ predict") #test not implemented
+tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize/ predict")  # test not implemented
 tf.flags.DEFINE_float('pos_weight', '1', 'Weight for FNs, higher increases recall')
+tf.flags.DEFINE_integer('itr', '501', 'training iterations')
+tf.flags.DEFINE_bool('normalize', 'True', 'normalizing intensity')
+tf.flags.DEFINE_string('device', 'gpu-1', 'normalizing intensity')
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
-MAX_ITERATION = int(1e5 + 1)
+MAX_ITERATION = FLAGS.itr
 NUM_OF_CLASSESS = FLAGS.class_num
-# IMAGE_SIZE = 224
 IMAGE_WIDTH = 224
 IMAGE_HEIGHT = 224
 
+if FLAGS.device is 'gpu-1':
+    graph_device = '/device:GPU:1'
+elif FLAGS.device is 'gpu-0':
+    graph_device = '/device:GPU:0'
+elif FLAGS.device.startswith("cpu"):
+    graph_device = '/device:CPU:0'
+    print("USING CPU!")
 
 def vgg_net(weights, image):
     layers = (
@@ -147,13 +156,12 @@ def train(loss_val, var_list):
             utils.add_gradient_summary(grad, var)
     return optimizer.apply_gradients(grads)
 
-
 def main(argv=None):
-    with tf.device('/device:GPU:' + str(FLAGS.gpu)):
+    with tf.device(graph_device):
         keep_probability = tf.placeholder(tf.float32, name="keep_probabilty")
-#         image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
+        #         image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
         image = tf.placeholder(tf.float32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name="input_image")
-#         annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
+        #         annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
         annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_HEIGHT, IMAGE_WIDTH, 1], name="annotation")
 
         pred_annotation, logits = inference(image, keep_probability)
@@ -162,15 +170,17 @@ def main(argv=None):
         tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=FLAGS.batch_size)
         if FLAGS.pos_weight == 1:
             loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
-                                                                              labels=tf.squeeze(annotation, squeeze_dims=[3]),
-                                                                              name="entropy")))
+                                                                                  labels=tf.squeeze(annotation,
+                                                                                                    squeeze_dims=[3]),
+                                                                                  name="entropy")))
         else:
-            loss = tf.reduce_mean((tf.nn.weighted_cross_entropy_with_logits(targets = tf.one_hot(tf.squeeze(annotation, squeeze_dims=[3]), FLAGS.class_num, axis=-1),
-                                                                              logits=logits,
-                                                                              pos_weight=tf.constant([1, 1, 1, 1, FLAGS.pos_weight]),
-                                                                              name="entropy")))
+            loss = tf.reduce_mean((tf.nn.weighted_cross_entropy_with_logits(
+                targets=tf.one_hot(tf.squeeze(annotation, squeeze_dims=[3]), FLAGS.class_num, axis=-1),
+                logits=logits,
+                pos_weight=tf.constant([1, 1, 1, 1, FLAGS.pos_weight]),
+                name="entropy")))
         loss_summary = tf.summary.scalar("entropy", loss)
-        iou_error, update_op = tf.metrics.mean_iou(pred_annotation, annotation, NUM_OF_CLASSESS)
+        mean_iou, matrix_iou = tf.metrics.mean_iou(pred_annotation, annotation, NUM_OF_CLASSESS)
 
         trainable_var = tf.trainable_variables()
         if FLAGS.debug:
@@ -182,23 +192,24 @@ def main(argv=None):
         summary_op = tf.summary.merge_all()
 
         print("Setting up image reader...")
-    print('Here')
+
     train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
     print("No. train records: ", len(train_records))
     print("No. validation records: ", len(valid_records))
 
     print("Setting up dataset reader")
-    image_options_train = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT, 'image_augmentation':FLAGS.image_augmentation}
+    image_options_train = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT,
+                           'image_augmentation': FLAGS.image_augmentation}
     image_options_val = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT}
     if FLAGS.mode == 'train':
         train_val_dataset = dataset.TrainVal.from_records(
-            train_records, valid_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size)
-    #validation_dataset_reader = dataset.BatchDatset(valid_records, image_options_val)
+            train_records, valid_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size_v)
+    # validation_dataset_reader = dataset.BatchDatset(valid_records, image_options_val)
 
-    with tf.device('/device:GPU:' + str(FLAGS.gpu)):
+    with tf.device(graph_device):
         config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
         config.gpu_options.allow_growth = True
-        sess = tf.Session(config= config)
+        sess = tf.Session(config=config)
 
         print("Setting up Saver...")
         saver = tf.train.Saver()
@@ -218,44 +229,88 @@ def main(argv=None):
         if FLAGS.mode == "train":
             it_train, it_val = train_val_dataset.get_iterators()
             # get_next = iterator.get_next()
-            #training_init_op, val_init_op = train_val_dataset.get_ops()
-            if FLAGS.dropout <=0 or FLAGS.dropout > 1:
+            # training_init_op, val_init_op = train_val_dataset.get_ops()
+            if FLAGS.dropout <= 0 or FLAGS.dropout > 1:
                 raise ValueError("Dropout value not in range (0,1]")
-            #sess.run(training_init_op)
+            # sess.run(training_init_op)
 
-            #Ignore filename from reader
+            # Ignore filename from reader
             next_train_images, next_train_annotations, next_train_name = it_train.get_next()
             next_val_images, next_val_annotations, next_val_name = it_val.get_next()
+            learning_curve_training = []
+            learning_curve_validation = []
+            learning_curve_iou = []
             for i in xrange(MAX_ITERATION):
-    #             print(sess.run(next_train_name))
+
                 train_images, train_annotations = sess.run([next_train_images, next_train_annotations])
-    #             print(train_images)
-    #             print(train_annotations)
+                if FLAGS.normalize:
+                    train_images = train_images / 255.0
+                    train_annotations = train_annotations / 255.0
+
                 feed_dict = {image: train_images, annotation: train_annotations, keep_probability: (1 - FLAGS.dropout)}
 
                 sess.run(train_op, feed_dict=feed_dict)
 
-                if i % 10 == 0:
+                if i % 20 == 0:
                     train_loss, summary_str = sess.run([loss, loss_summary], feed_dict=feed_dict)
                     print("Step: %d, Train_loss:%g" % (i, train_loss))
+                    mn_iou, mx_iou = sess.run([mean_iou, matrix_iou], feed_dict=feed_dict)
+                    print("Mean IoU: %g" % mn_iou)
+                    # print("Mean Accuracy: %g" % mn_acc)
                     train_writer.add_summary(summary_str, i)
+                    print('\n')
 
-                if i % 500 == 0:
-                    #sess.run(val_init_op)
+                if i % 100 == 0:
+                    # sess.run(val_init_op)
 
                     valid_images, valid_annotations = sess.run([next_val_images, next_val_annotations])
-                    valid_loss, summary_sva = sess.run([loss, loss_summary], feed_dict={image: valid_images, annotation: valid_annotations,
-                                                           keep_probability: 1.0})
+                    if FLAGS.normalize:
+                        valid_images = valid_images / 255.0
+                        valid_annotations = valid_annotations / 255.0
+                    feed_dict = {image: valid_images, annotation: valid_annotations, keep_probability: 1.0}
+                    valid_loss, summary_sva = sess.run([loss, loss_summary], feed_dict=feed_dict)
                     print("%s ---> Validation_loss: %g" % (datetime.datetime.now(), valid_loss))
+                    mn_iou, mx_iou = sess.run([mean_iou, matrix_iou], feed_dict=feed_dict)
+                    print("Mean IoU: %g" % mn_iou)
+                    print('\n')
 
                     # add validation loss to TensorBoard
+                    # sess.run(training_init_op)
+                    learning_curve_training.append(train_loss)
+                    learning_curve_validation.append(valid_loss)
+                    learning_curve_iou.append(mn_iou)
+
+                if i%500 == 0:
                     validation_writer.add_summary(summary_sva, i)
                     saver.save(sess, FLAGS.logs_dir + "model.ckpt", i)
-                    #sess.run(training_init_op)
 
+                    valid_images, valid_annotations = sess.run([next_val_images, next_val_annotations])
+                    valid_images = valid_images / 255.0
+                    valid_annotations = valid_annotations / 255.0
+                    feed_dict = {image: valid_images, annotation: valid_annotations, keep_probability: 1.0}
+                    pred_annotation = sess.run(pred_annotation, feed_dict=feed_dict)
+                    #true_img = valid_annotations[:, :, :, :].reshape(, IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
+                    #pred_img = pred_annotation[:, :, :, :].reshape(, IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
+                    for index in range(FLAGS.batch_size_v):
+                        orig_img = valid_images[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH, 3)
+                        true_img = valid_annotations[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
+                        pred_img = pred_annotation[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
+                        true_name = "true_img_" + str(i) + "_" + str(index)
+                        pred_name = "pred_img_" + str(i) + "_" + str(index)
+                        mask_name = "mask_" + str(i) + "_" + str(index)
+                        utils.save_image(pred_img, FLAGS.logs_dir, name=pred_name)
+                        utils.save_image(true_img, FLAGS.logs_dir, name=true_name)
+                        utils.apply_mask_and_save(orig_img, pred_img, mask_name, FLAGS.logs_dir, color="blue")
+
+            dictionary = {"train_loss": learning_curve_training,
+                          "valid_loss": learning_curve_validation,
+                          "mean_iou": learning_curve_iou}
+            utils.save_dict(dictionary,"learning_curves", FLAGS.logs_dir)
 
         elif FLAGS.mode == "visualize":
-            iterator = train_val_dataset.get_iterator()
+            train_val_dataset = dataset.TrainVal.from_records(train_records, valid_records, image_options_train,
+                                                              image_options_val, FLAGS.batch_size, FLAGS.batch_size)
+            iterator = train_val_dataset.get_iterators()
             get_next = iterator.get_next()
             training_init_op, val_init_op = train_val_dataset.get_ops()
             sess.run(val_init_op)
@@ -266,16 +321,17 @@ def main(argv=None):
             pred = np.squeeze(pred, axis=3)
 
             for itr in range(FLAGS.batch_size):
-                utils.save_image(valid_images[itr].astype(np.uint8), FLAGS.logs_dir, name="inp_" + str(5+itr))
-                utils.save_image(valid_annotations[itr].astype(np.uint8), FLAGS.logs_dir, name="gt_" + str(5+itr))
-                utils.save_image(pred[itr].astype(np.uint8), FLAGS.logs_dir, name="pred_" + str(5+itr))
+                utils.save_image(valid_images[itr].astype(np.uint8), FLAGS.logs_dir, name="inp_" + str(5 + itr))
+                utils.save_image(valid_annotations[itr].astype(np.uint8), FLAGS.logs_dir, name="gt_" + str(5 + itr))
+                utils.save_image(pred[itr].astype(np.uint8), FLAGS.logs_dir, name="pred_" + str(5 + itr))
                 print("Saved image: %d" % itr)
 
         elif FLAGS.mode == "predict":
             predict_records = scene_parsing.read_prediction_set(FLAGS.data_dir)
             no_predict_images = len(predict_records)
-            print ("No. of predict records {}".format(no_predict_images))
-            predict_image_options = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT, 'predict_dataset': True}
+            print("No. of predict records {}".format(no_predict_images))
+            predict_image_options = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT,
+                                     'predict_dataset': True}
             test_dataset_reader = dataset.SingleDataset.from_records(predict_records, predict_image_options)
             next_test_image = test_dataset_reader.get_iterator().get_next()
             if not os.path.exists(os.path.join(FLAGS.logs_dir, "predictions")):
@@ -287,37 +343,42 @@ def main(argv=None):
                 pred = sess.run(pred_annotation, feed_dict={image: predict_images,
                                                             keep_probability: 1.0})
                 pred = np.squeeze(pred, axis=3)
-                utils.save_image(((pred[0] * 255 / (NUM_OF_CLASSESS - 1))).astype(np.uint8), os.path.join(FLAGS.logs_dir, "predictions"),
+                utils.save_image(((pred[0] * 255 / (NUM_OF_CLASSESS - 1))).astype(np.uint8),
+                                 os.path.join(FLAGS.logs_dir, "predictions"),
                                  name="predict_" + str(predict_names))
-        
+
         elif FLAGS.mode == "test":
-            
-            test_records, _ = scene_parsing.read_dataset(FLAGS.data_dir, test = True)
-#             print(test_records)
-            image_options_train = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT, 'image_augmentation':False}
+
+            test_records, _ = scene_parsing.read_dataset(FLAGS.data_dir, test=True)
+            #             print(test_records)
+            image_options_train = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT,
+                                   'image_augmentation': False}
             image_options_val = {'resize': True, 'resize_width': IMAGE_WIDTH, 'resize_height': IMAGE_HEIGHT}
-            
+
             test_dataset = dataset.TrainVal.from_records(
-            test_records, test_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size)
-            
+                test_records, test_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size)
+
             iou_result = np.zeros([int(np.ceil(len(test_records) / FLAGS.batch_size))])
             it_test, _ = test_dataset.get_iterators()
             next_test_images, next_test_annotations, next_test_name = it_test.get_next()
             print('All images:{}, batch size: {}'.format(len(test_records), FLAGS.batch_size))
-#             print(int(np.ceil(len(test_records) / FLAGS.batch_size)))
+            #             print(int(np.ceil(len(test_records) / FLAGS.batch_size)))
             for i in range(int(np.ceil(len(test_records) / FLAGS.batch_size))):
                 test_images, test_annotations = sess.run([next_test_images, next_test_annotations])
+                test_images = test_images / 255.0
+                test_annotations = test_annotations / 255.0
                 feed_dict = {image: test_images, annotation: test_annotations, keep_probability: 1.0}
-                
-                confusion = sess.run(update_op, feed_dict=feed_dict)
-                mean_iou = sess.run(iou_error)
-                print("Test batch {}, mean iou {}".format(i, mean_iou))
-                print(confusion)
-                
-#                 iou_result[i] = mean_iou
-                
+
+                # confusion = sess.run(update_op, feed_dict=feed_dict)
+                mn_iou, mx_iou = sess.run([mean_iou, matrix_iou], feed_dict=feed_dict)
+                print("Test batch {}, mean iou {}".format(i, mn_iou))
+                # print(confusion)
+
+
+# iou_result[i] = mean_iou
+
 #             print("Final IoU: {}".format(np.mean(iou_result)))
-        
+
 #         predict_records = scene_parsing.read_prediction_set(FLAGS.data_dir)
 #         no_predict_images = len(predict_records)
 #         print ("No. of predict records {}".format(no_predict_images))
