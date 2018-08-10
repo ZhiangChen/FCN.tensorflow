@@ -10,21 +10,22 @@ import TFReader as dataset
 from six.moves import xrange
 
 FLAGS = tf.flags.FLAGS
-tf.flags.DEFINE_integer("batch_size", "2", "batch size for training")
-tf.flags.DEFINE_integer("batch_size_v", "2", "batch size for validation")
+tf.flags.DEFINE_integer("batch_size", "8", "batch size for training")
+tf.flags.DEFINE_integer("batch_size_v", "32", "batch size for validation")
 tf.flags.DEFINE_integer("class_num", "2", "number of classes")
 tf.flags.DEFINE_string("logs_dir", "logs/", "path to logs directory")
 tf.flags.DEFINE_string("data_dir", "Data_zoo/dataset/", "path to dataset")
-tf.flags.DEFINE_float("learning_rate", "1e-5", "Learning rate for Adam Optimizer")
+tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
 tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 tf.flags.DEFINE_bool('image_augmentation', "False", "Image augmentation: True/ False")
-tf.flags.DEFINE_float('dropout', "0.5", "Probably of keeping value in dropout (valid values (0.0,1.0]")
+tf.flags.DEFINE_float('dropout', "0.3", "Probably of keeping value in dropout (valid values (0.0,1.0]")
 tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize/ predict")  # test not implemented
 tf.flags.DEFINE_float('pos_weight', '1', 'Weight for FNs, higher increases recall')
 tf.flags.DEFINE_integer('itr', '501', 'training iterations')
 tf.flags.DEFINE_bool('normalize', 'True', 'normalizing intensity')
-tf.flags.DEFINE_string('device', 'gpu-1', 'normalizing intensity')
+tf.flags.DEFINE_string('device', 'gpu', 'gpu or cpu')
+tf.flags.DEFINE_string('object', 'orange', 'object name')
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
@@ -33,10 +34,8 @@ NUM_OF_CLASSESS = FLAGS.class_num
 IMAGE_WIDTH = 224
 IMAGE_HEIGHT = 224
 
-if FLAGS.device is 'gpu-1':
+if FLAGS.device.startswith('gpu'):
     graph_device = '/device:GPU:1'
-elif FLAGS.device is 'gpu-0':
-    graph_device = '/device:GPU:0'
 elif FLAGS.device.startswith("cpu"):
     graph_device = '/device:CPU:0'
     print("USING CPU!")
@@ -280,24 +279,26 @@ def main(argv=None):
                     learning_curve_validation.append(valid_loss)
                     learning_curve_iou.append(mn_iou)
 
-                if i%500 == 0:
+                if i%1000 == 0:
                     validation_writer.add_summary(summary_sva, i)
                     saver.save(sess, FLAGS.logs_dir + "model.ckpt", i)
 
                     valid_images, valid_annotations = sess.run([next_val_images, next_val_annotations])
-                    valid_images = valid_images / 255.0
-                    valid_annotations = valid_annotations / 255.0
+                    if FLAGS.normalize:
+                        valid_images = valid_images / 255.0
+                        valid_annotations = valid_annotations / 255.0
                     feed_dict = {image: valid_images, annotation: valid_annotations, keep_probability: 1.0}
-                    pred_annotation = sess.run(pred_annotation, feed_dict=feed_dict)
+                    
+		    pred_annotations = sess.run(pred_annotation, feed_dict=feed_dict)
                     #true_img = valid_annotations[:, :, :, :].reshape(, IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
                     #pred_img = pred_annotation[:, :, :, :].reshape(, IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
                     for index in range(FLAGS.batch_size_v):
-                        orig_img = valid_images[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH, 3)
+                        orig_img = valid_images[index, :, :, :] * 255.0
                         true_img = valid_annotations[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
-                        pred_img = pred_annotation[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
-                        true_name = "true_img_" + str(i) + "_" + str(index)
-                        pred_name = "pred_img_" + str(i) + "_" + str(index)
-                        mask_name = "mask_" + str(i) + "_" + str(index)
+                        pred_img = pred_annotations[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
+                        true_name = FLAGS.object + "_true_" + str(i) + "_" + str(index)
+                        pred_name = FLAGS.object + "_pred_" + str(i) + "_" + str(index)
+                        mask_name = FLAGS.object + "_mask_" + str(i) + "_" + str(index)
                         utils.save_image(pred_img, FLAGS.logs_dir, name=pred_name)
                         utils.save_image(true_img, FLAGS.logs_dir, name=true_name)
                         utils.apply_mask_and_save(orig_img, pred_img, mask_name, FLAGS.logs_dir, color="blue")

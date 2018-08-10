@@ -280,9 +280,9 @@ def apply_mask_and_save(image, mask, name, dir, color, alpha = 0.3):
     :return: None
     """
     if color is "blue":
-        color = (255, 50, 50)
-    if color is "red":
         color = (50, 50, 255)
+    if color is "red":
+        color = (255, 50, 50)
 
     for c in range(3):
         image[:, :, c] = np.where(mask == 255,
