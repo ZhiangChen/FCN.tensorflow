@@ -9,13 +9,15 @@ import datetime
 import TFReader as dataset
 from six.moves import xrange
 
+#import matplotlib.pyplot as plt
+
 FLAGS = tf.flags.FLAGS
-tf.flags.DEFINE_integer("batch_size", "8", "batch size for training")
-tf.flags.DEFINE_integer("batch_size_v", "32", "batch size for validation")
+tf.flags.DEFINE_integer("batch_size", "1", "batch size for training")
+tf.flags.DEFINE_integer("batch_size_v", "10", "batch size for validation")
 tf.flags.DEFINE_integer("class_num", "2", "number of classes")
-tf.flags.DEFINE_string("logs_dir", "logs/", "path to logs directory")
-tf.flags.DEFINE_string("data_dir", "Data_zoo/dataset/", "path to dataset")
-tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
+tf.flags.DEFINE_string("logs_dir", "logs/rocks", "path to logs directory")
+tf.flags.DEFINE_string("data_dir", "Data_zoo/rocks", "path to dataset")
+tf.flags.DEFINE_float("learning_rate", "1e-5", "Learning rate for Adam Optimizer")
 tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 tf.flags.DEFINE_bool('image_augmentation', "False", "Image augmentation: True/ False")
@@ -25,14 +27,14 @@ tf.flags.DEFINE_float('pos_weight', '1', 'Weight for FNs, higher increases recal
 tf.flags.DEFINE_integer('itr', '501', 'training iterations')
 tf.flags.DEFINE_bool('normalize', 'True', 'normalizing intensity')
 tf.flags.DEFINE_string('device', 'gpu', 'gpu or cpu')
-tf.flags.DEFINE_string('object', 'orange', 'object name')
+tf.flags.DEFINE_string('object', 'rocks', 'object name')
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
 MAX_ITERATION = FLAGS.itr
 NUM_OF_CLASSESS = FLAGS.class_num
-IMAGE_WIDTH = 224
-IMAGE_HEIGHT = 224
+IMAGE_WIDTH = 400
+IMAGE_HEIGHT = 400
 
 if FLAGS.device.startswith('gpu'):
     graph_device = '/device:GPU:1'
@@ -225,6 +227,46 @@ def main(argv=None):
             saver.restore(sess, ckpt.model_checkpoint_path)
             print("Model restored...")
 
+	if FLAGS.mode == "test_zhiang":
+	    train_val_dataset = dataset.TrainVal.from_records(train_records, valid_records, image_options_train, image_options_val, FLAGS.batch_size, FLAGS.batch_size_v)
+	    it_train, it_val = train_val_dataset.get_iterators()
+            # get_next = iterator.get_next()
+            # training_init_op, val_init_op = train_val_dataset.get_ops()
+            if FLAGS.dropout <= 0 or FLAGS.dropout > 1:
+                raise ValueError("Dropout value not in range (0,1]")
+            # sess.run(training_init_op)
+
+            # Ignore filename from reader
+            next_train_images, next_train_annotations, next_train_name = it_train.get_next()
+            next_val_images, next_val_annotations, next_val_name = it_val.get_next()
+
+
+	    for i in xrange(MAX_ITERATION):
+		valid_images, valid_annotations = sess.run([next_val_images, next_val_annotations])
+                if FLAGS.normalize:
+                    valid_images = valid_images / 255.0
+                    valid_annotations = valid_annotations / 255.0
+                feed_dict = {image: valid_images, annotation: valid_annotations, keep_probability: 1.0}
+                valid_loss, summary_sva = sess.run([loss, loss_summary], feed_dict=feed_dict)
+		pred_annotations = sess.run(pred_annotation, feed_dict=feed_dict)
+                print("%s ---> Validation_loss: %g" % (datetime.datetime.now(), valid_loss))
+                mn_iou, mx_iou = sess.run([mean_iou, matrix_iou], feed_dict=feed_dict)
+                print("Mean IoU: %g" % mn_iou)
+                print('\n')
+	    
+	    	for index in range(FLAGS.batch_size_v):
+		    #print(valid_images.shape)
+		    orig_img = valid_images[index, :, :, :] * 255.0
+             	    true_img = valid_annotations[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
+          	    pred_img = pred_annotations[index, :, :, :].reshape(IMAGE_HEIGHT, IMAGE_WIDTH) * 255.0
+            	    true_name = "test_" + FLAGS.object + "_true_" + str(i) + "_" + str(index)
+            	    pred_name = "test_" + FLAGS.object + "_pred_" + str(i) + "_" + str(index)
+         	    mask_name = "test_" + FLAGS.object + "_mask_" + str(i) + "_" + str(index)
+         	    utils.save_image(pred_img, FLAGS.logs_dir, name=pred_name)
+                    utils.save_image(true_img, FLAGS.logs_dir, name=true_name)
+                    utils.apply_mask_and_save(orig_img, pred_img, mask_name, FLAGS.logs_dir, color="blue")
+
+
         if FLAGS.mode == "train":
             it_train, it_val = train_val_dataset.get_iterators()
             # get_next = iterator.get_next()
@@ -245,10 +287,18 @@ def main(argv=None):
                 if FLAGS.normalize:
                     train_images = train_images / 255.0
                     train_annotations = train_annotations / 255.0
+		    #print(train_annotations.shape)
+		"""
+		print(train_images.shape)
+		t_name = 'training'+str(i)
+		utils.save_image(train_images.reshape((400,400,3)), '.', name=t_name)
+		a_name = 'annotate'+str(i)
+		utils.save_image(train_annotations.reshape((400,400)), '.', name=a_name)
+		"""
 
                 feed_dict = {image: train_images, annotation: train_annotations, keep_probability: (1 - FLAGS.dropout)}
 
-                sess.run(train_op, feed_dict=feed_dict)
+                sess.run(train_op, feed_dict=feed_dict)  # training
 
                 if i % 20 == 0:
                     train_loss, summary_str = sess.run([loss, loss_summary], feed_dict=feed_dict)
@@ -302,11 +352,8 @@ def main(argv=None):
                         utils.save_image(pred_img, FLAGS.logs_dir, name=pred_name)
                         utils.save_image(true_img, FLAGS.logs_dir, name=true_name)
                         utils.apply_mask_and_save(orig_img, pred_img, mask_name, FLAGS.logs_dir, color="blue")
-
-            dictionary = {"train_loss": learning_curve_training,
-                          "valid_loss": learning_curve_validation,
-                          "mean_iou": learning_curve_iou}
-            utils.save_dict(dictionary,"learning_curves", FLAGS.logs_dir)
+		    dictionary = {"train_loss": learning_curve_training, "valid_loss": learning_curve_validation, "mean_iou": learning_curve_iou}
+            	    utils.save_dict(dictionary,"learning_curves", FLAGS.logs_dir)
 
         elif FLAGS.mode == "visualize":
             train_val_dataset = dataset.TrainVal.from_records(train_records, valid_records, image_options_train,
